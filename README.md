@@ -1,6 +1,6 @@
 # stack-orderflow
 
-Orderflow chart GUI using Finplot and PyQtgraph.
+Orderflow chart GUI using [Finplot](https://github.com/highfestiva/finplot) and [PyQtGraph](https://github.com/pyqtgraph/pyqtgraph).
 
 ## Remarks
 
