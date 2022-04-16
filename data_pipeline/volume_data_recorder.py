@@ -5,7 +5,7 @@ import pandas as pd
 from unicorn_binance_websocket_api import BinanceWebSocketApiManager
 from unicorn_fy import UnicornFy
 
-from research.influx_db_handler import InfluxDbHandler
+from influx_db_handler import InfluxDbHandler
 
 class VolumeDataRecorder:
 

@@ -1,0 +1,16 @@
+Config:
+# - inst: btcusdt
+#   channel: aggTrade
+#   token: BTC
+#   resample_period: 1min
+#   round_px_to_nearest: 10
+# - inst: ethusdt
+#   channel: aggTrade
+#   token: ETH
+#   resample_period: 1min
+#   round_px_to_nearest: 2
+- inst: nearusdt
+  channel: aggTrade
+  token: NEAR
+  resample_period: 1min
+  round_px_to_nearest: 0.01

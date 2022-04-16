@@ -51,6 +51,7 @@ class MarketProfileSlice:
         # read orderflow data
         self.n_levels = len(orderflow)
         self.price_levels = np.array([row[0] for row in orderflow])
+        self.price_levels_range = (max(self.price_levels), min(self.price_levels))
         self.delta_qty = round(sum([row[2] for row in orderflow]), 8)
         self.total_bid_qty = round(sum([row[3] for row in orderflow]), 8)
         self.total_ask_qty = round(sum([row[4] for row in orderflow]), 8)
