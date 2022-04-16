@@ -12,8 +12,6 @@ from data_pipeline.market_profiler import find_poc
 class MarketProfileSlice:
 
     def __init__(self, inst: str, timepoint: datetime, ohlcv: dict, orderflow: np.ndarray):
-        self.inst = inst
-        self.timepoint = timepoint
         '''
         ohlcv
         o: open
@@ -32,6 +30,8 @@ class MarketProfileSlice:
         b: bid volume
         a: ask volume
         '''
+        self.inst = inst
+        self.timepoint = timepoint
 
         # read ohlcv data
         self.open = ohlcv['o']
@@ -56,7 +56,8 @@ class MarketProfileSlice:
         self.total_ask_qty = round(sum([row[4] for row in orderflow]), 8)
 
         self.profile = pd.DataFrame({'q': [row[1] for row in orderflow]}, index=self.price_levels)
-
+        self.delta_profile = pd.DataFrame({timepoint: [row[2] for row in orderflow]}, index=self.price_levels)
+        self.bidask_profile = pd.DataFrame({'b': [row[3] for row in orderflow], 'a': [row[4] for row in orderflow]}, index=self.price_levels)
         # calc POC
         self.poc_volume, self.poc_price_level = find_poc(self.profile)
 

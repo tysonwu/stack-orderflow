@@ -1,3 +1,7 @@
-# orderflow-charting
+# stack-orderflow
 
-Orderflow chart GUI using Finplot and PyQt5graph.
+Orderflow chart GUI using Finplot and PyQtgraph.
+
+## Demo
+
+![Demo](img/demo.png "Demo")
