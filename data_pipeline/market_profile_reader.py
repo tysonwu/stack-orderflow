@@ -95,7 +95,7 @@ class MarketProfileReader:
             for date in self.timepoint_range:
                 if start <= date <= end:
                     ohlcv_data = self.ohlcv_data.loc[date].to_dict()
-                    orderflow_data = self.orderflow_data[date]                    
+                    orderflow_data = self.orderflow_data[date]
                     result.append(MarketProfileSlice(self.inst, date, ohlcv_data, orderflow_data))
             return result
         else:

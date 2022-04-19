@@ -1,5 +1,7 @@
 # stack-orderflow
 
+> This repo is still undergoing heavy development.
+
 Orderflow chart GUI using [Finplot](https://github.com/highfestiva/finplot) and [PyQtGraph](https://github.com/pyqtgraph/pyqtgraph).
 
 ## Remarks

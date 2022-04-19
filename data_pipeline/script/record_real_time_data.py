@@ -1,5 +1,5 @@
 import argparse
-import json
+import yaml
 import os
 from multiprocessing import Process
 
@@ -25,8 +25,8 @@ if __name__ == '__main__':
         env = 'prod'
     
     # read config
-    with open(f'{os.path.dirname(__file__)}/../../../config/volume_data_recorder_config.json') as f:
-        configs = json.load(f)['Config'] # list of configs for each thread
+    with open(f'{os.path.dirname(__file__)}/../../config/volume_data_recorder_config.yaml') as f:
+        configs = yaml.full_load(f)['Config'] # list of configs for each thread
 
 
     process_list = []

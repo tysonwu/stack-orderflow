@@ -37,9 +37,8 @@ class VolumeDataRecorder:
         self._spot_websocket_api_manager.create_stream([self.channel], [self.inst])
 
         # check if it is an incomplete candle (because not ran from 0th second)
-        if datetime.now().second != 0:
-            first_incomplete_candle = True
-        
+        first_incomplete_candle = True if datetime.now().second != 0 else False
+
         current_minute = datetime.now().minute
         while True:
             # with self._lock:
@@ -49,7 +48,7 @@ class VolumeDataRecorder:
             if oldest_data_from_stream_buffer:
                 data = UnicornFy.binance_com_websocket(oldest_data_from_stream_buffer)
                 if 'result' not in data: # first line from websocket is a trivial dict = {'result': None, 'id': 1, 'unicorn_fied': ['binance.com', '0.11.0']}
-                    t = datetime.utcfromtimestamp(float(data['event_time']) / 1000)
+                    t = datetime.utcfromtimestamp(int(data['event_time']) // 1000)
                     p =  float(data['price'])
                     if data['is_market_maker']:
                         q = -float(data['quantity'])
@@ -58,12 +57,18 @@ class VolumeDataRecorder:
 
                     # check if we it's time to call influx to write and clean up self.data
                     if t.minute != current_minute:
-                        _ = self._transform_feed_and_write_and_flush(no_write=first_incomplete_candle)
+                        ohlc_df, volume_df = self._transform_feed_and_write_and_flush(no_write=first_incomplete_candle)
+                        candle_time = max(ohlc_df['T'])
+                        self._announce_minute_data(candle_time, ohlc_df, volume_df, no_update=first_incomplete_candle)
                         current_minute = t.minute
                         first_incomplete_candle = False
 
                     self.data.append([t, p, q])
                     # print(f'{t} {p=} {q=}, {len(self.data)=}')
+
+
+    def _announce_minute_data(self, dt, ohlcv_df, volume_df, no_update):
+        pass
 
 
     def _write_to_db(self, volume_df, ohlc_df, verbose):
