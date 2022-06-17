@@ -513,7 +513,7 @@ class FinCrossHair:
         self.clamp_x = 0
         self.clamp_y = 0
         self.infos = []
-        pen = pg.mkPen(color=color, style=QtCore.Qt.CustomDashLine, dash=[7, 7])
+        pen = pg.mkPen(color=color, style=QtCore.Qt.CustomDashLine, dash=[5, 5])
         self.vline = pg.InfiniteLine(angle=90, movable=False, pen=pen)
         self.hline = pg.InfiniteLine(angle=0, movable=False, pen=pen)
         self.xtext = pg.TextItem(color=color, anchor=(0,1))
@@ -1159,56 +1159,6 @@ class CandlestickItem(FinPlotItem):
 
 
 
-class CandlestickOrderflowItem(FinPlotItem):
-    def __init__(self, ax, datasrc, draw_body, draw_shadow, candle_width, colorfunc):
-        self.colors = dict(bull_shadow      = candle_bull_color,
-                           bull_frame       = candle_bull_color,
-                           bull_body        = candle_bull_body_color,
-                           bear_shadow      = candle_bear_color,
-                           bear_frame       = candle_bear_color,
-                           bear_body        = candle_bear_color,
-                           weak_bull_shadow = brighten(candle_bull_color, 1.2),
-                           weak_bull_frame  = brighten(candle_bull_color, 1.2),
-                           weak_bull_body   = brighten(candle_bull_color, 1.2),
-                           weak_bear_shadow = brighten(candle_bear_color, 1.5),
-                           weak_bear_frame  = brighten(candle_bear_color, 1.5),
-                           weak_bear_body   = brighten(candle_bear_color, 1.5))
-        self.draw_body = draw_body
-        self.draw_shadow = draw_shadow
-        self.candle_width = candle_width
-        self.shadow_width = candle_shadow_width
-        self.colorfunc = colorfunc
-        self.x_offset = 0
-        super().__init__(ax, datasrc, lod=True)
-
-    def generate_picture(self, boundingRect, candle_offset=0.4):
-        w = self.candle_width
-        w2 = w * 0.5
-        left,right = boundingRect.left(), boundingRect.right()
-        p = self.painter
-        df,origlen = self.datasrc.rows(5, left, right, yscale=self.ax.vb.yscale)
-        drawing_many_shadows = self.draw_shadow and origlen > lod_candles*2//3
-        for shadow,frame,body,df_rows in self.colorfunc(self, self.datasrc, df):
-            idxs = df_rows.index
-            rows = df_rows.values
-            if self.x_offset:
-                idxs += self.x_offset
-            if self.draw_shadow:
-                p.setPen(pg.mkPen(shadow, width=self.shadow_width))
-                for x,(t,open,close,high,low) in zip(idxs, rows):
-                    if high > low:
-                        p.drawLine(QtCore.QPointF(x-candle_offset, low), QtCore.QPointF(x-candle_offset, high))
-            if self.draw_body and not drawing_many_shadows: # settle with only drawing shadows if too much detail
-                p.setPen(pg.mkPen(frame))
-                p.setBrush(pg.mkBrush(body))
-                for x,(t,open,close,high,low) in zip(idxs, rows):
-                    p.drawRect(QtCore.QRectF(x-w2-candle_offset, open, w, close-open))
-
-    def rowcolors(self, prefix):
-        return [self.colors[prefix+'_shadow'], self.colors[prefix+'_frame'], self.colors[prefix+'_body']]
-
-
-
 class DeltaHeatmapItem(FinPlotItem):
     def __init__(self, ax, datasrc, rect_size=0.9, filter_limit=0, colmap=colmap_clash, whiteout=0.0, colcurve=lambda x:pow(x,4)):
         self.rect_size = rect_size
@@ -1217,19 +1167,19 @@ class DeltaHeatmapItem(FinPlotItem):
         self.colmap_red = ColorMap(
             [0.0, 0.33, 0.66, 1.0], 
             [
-                [239, 83, 80, 10], 
-                [239, 83, 80, 150], 
-                [239, 83, 80, 200], 
-                [239, 83, 80, 230]
+                [239, 83, 80, 50], 
+                [239, 83, 80, 180], 
+                [239, 83, 80, 220], 
+                [239, 83, 80, 240]
             ]
         )
         self.colmap_green = ColorMap(
             [0.0, 0.33, 0.66, 1.0], 
             [
-                [38, 166, 154, 10], 
-                [38, 166, 154, 150], 
-                [38, 166, 154, 200], 
-                [38, 166, 154, 230]
+                [38, 166, 154, 50], 
+                [38, 166, 154, 180], 
+                [38, 166, 154, 220], 
+                [38, 166, 154, 240]
             ]
         )
         self.whiteout = whiteout
@@ -1597,18 +1547,6 @@ def candlestick_ochl(datasrc, draw_body=True, draw_shadow=True, candle_width=0.6
     ax.addItem(item)
     return item
 
-
-def candlestick_ochl_orderflow(datasrc, draw_body=True, draw_shadow=True, candle_width=0.6, ax=None, colorfunc=price_colorfilter):
-    ax = _create_plot(ax=ax, maximize=False)
-    datasrc = _create_datasrc(ax, datasrc)
-    datasrc.scale_cols = [3,4] # only hi+lo scales
-    _set_datasrc(ax, datasrc)
-    item = CandlestickOrderflowItem(ax=ax, datasrc=datasrc, draw_body=draw_body, draw_shadow=draw_shadow, candle_width=candle_width, colorfunc=colorfunc)
-    _update_significants(ax, datasrc, force=True)
-    item.update_data = partial(_update_data, None, None, item)
-    item.update_gfx = partial(_update_gfx, item)
-    ax.addItem(item)
-    return item
 
 
 def renko(x, y=None, bins=None, step=None, ax=None, colorfunc=price_colorfilter):
@@ -2023,6 +1961,7 @@ def show(qt_exec=True):
         sounds.clear()
         master_data.clear()
         last_ax = None
+    return app
 
 
 def play_sound(filename):

@@ -4,10 +4,20 @@
 
 Orderflow chart GUI using [Finplot](https://github.com/highfestiva/finplot) and [PyQtGraph](https://github.com/pyqtgraph/pyqtgraph).
 
-## Remarks
+## Plotting
 
-- The Finplot library used in this project is modified from its [original library](https://github.com/highfestiva/finplot) in order to allow for further customization.
+- The plotting is largely based on [original Finplot library](https://github.com/highfestiva/finplot), with slight modification in order to allow for orderflow plotting. The original finplot library package is included in this repo in `finplotter/finplot_library`. This repo modifies the original package in a pretty hacky way, so please use with caution. It is advised to look into the package itself for further customization.
 
-## Demo
+## Demo from `examples`
 
-![Demo](img/demo.png "Demo")
+### Example 01: Simple candlestick plot
+![Example 1](img/demo_01.png "Example 1")
+
+### Example 02: Simple candlestick plot with technical indicator panels
+![Example 2](img/demo_02.png "Example 2")
+
+### Example 03: Orderflow plot with static data
+![Example 3](img/demo_03.png "Example 3")
+
+### Example 04: Orderflow plot with real time data streaming
+<!-- ![Example 4](img/demo_04.png "Example 4") -->

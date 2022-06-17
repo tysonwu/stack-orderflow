@@ -1,57 +1,28 @@
-from datetime import datetime, timezone
+from datetime import datetime
 import pytz
 
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import pyqtgraph as pg
 import talib as ta
 
-import finplot_lib as fplt
-
-from data_pipeline.market_profile_reader import MarketProfileReader
+import finplotter.finplot_library as fplt
 
 '''
-Plotting of orderflow chart
+Plotting of candlestick chart with panels
 - Candlestick
 - Orderflow data by price level
 - Volume bar
 - Classic MACD
 - CVD
 - StochRSI
-
-Pyqtgraph ref:
-https://pyqtgraph.readthedocs.io/en/latest/index.html
-https://doc.qt.io/qtforpython-5/contents.html
 '''
 
 if __name__ == '__main__':
     inst = 'btcusdt'
-    # input in HKT
-    start = datetime(2021, 12, 10, 0, 0, 0)
-    end = datetime(2021, 12, 10, 6, 0, 0)
 
-    profile = MarketProfileReader()
-    profile.load_data_from_influx(inst=inst, start=start, end=end, env='local')
-    
-    # slice_dt = pytz.timezone('Asia/Hong_Kong').localize(datetime(2022,3,17,17,23,0)) # input in HKT
-    slice_start = pytz.timezone('Asia/Hong_Kong').localize(start) # input in HKT
-    slice_end = pytz.timezone('Asia/Hong_Kong').localize(end) # input in HKT
-    
-    # mp_slice = profile[slice_dt]
-    mp_slice = profile[slice_start:slice_end]
-
-    ohlcv = pd.DataFrame(
-        {
-            'o': [mp.open for mp in mp_slice],
-            'h': [mp.high for mp in mp_slice],
-            'l': [mp.low for mp in mp_slice],
-            'c': [mp.close for mp in mp_slice],
-            'v': [mp.volume_qty for mp in mp_slice],
-            'd': [mp.delta_qty for mp in mp_slice],
-        },
-        index=[mp.timepoint for mp in mp_slice]
-    )
+    ohlcv = pd.read_csv('examples/data/sample_data.csv', index_col=0)
+    ohlcv.index = pd.to_datetime(ohlcv.index)
 
     ema_n = [20, 50, 200]
     ema_colors = ['#33DCCD50', '#ADE03670', '#F4D03F80']
@@ -156,10 +127,6 @@ if __name__ == '__main__':
     ax2.showGrid(x=True, y=True, alpha=0.2)
     ax3.showGrid(x=True, y=True, alpha=0.2)
     ax4.showGrid(x=True, y=True, alpha=0.2)
-    
-    # add YAxis item at the right
-    # ax.axes['right'] = {'item': fplt.YAxisItem(vb=ax.vb, orientation='right')}
-    # ax2.axes['right'] = {'item': fplt.YAxisItem(vb=ax2.vb, orientation='right')}
 
     # add legend of ohlcv data
     '''

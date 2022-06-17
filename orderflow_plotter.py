@@ -1,5 +1,6 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import pytz
+import os
 
 import pandas as pd
 import numpy as np
@@ -7,26 +8,15 @@ import matplotlib.pyplot as plt
 import pyqtgraph as pg
 import talib as ta
 
-import finplot_lib as fplt
-
-from data_pipeline.market_profile_reader import MarketProfileReader
+import finplotter.finplot_library as fplt
 
 '''
-Plotting of orderflow chart
-- Candlestick
-- Orderflow data by price level
-- Volume bar
-- Classic MACD
-- CVD
-- StochRSI
-
-Pyqtgraph ref:
-https://pyqtgraph.readthedocs.io/en/latest/index.html
-https://doc.qt.io/qtforpython-5/contents.html
+Example references come from the original finplot package.
+Known issue: drawing heatmap for orderflow slot hightlights and bid-ask volume labels are resource-intensive.
 '''
 
 class OrderflowPlotter:
-
+ 
     ema_n = [20, 50, 200]
     macd = [12, 26, 9]
     stoch_rsi = [14, 3, 3]
@@ -45,6 +35,16 @@ class OrderflowPlotter:
         self.mp_slice = mp_slice
 
 
+    def trim_datasrc(self, keep: int = None):
+        '''This part yet to be fixed: trimming dataframe like this causes error in front-end (xaxis cannot be updated)'''
+        if keep is not None:
+            print(len(self.ohlcv))
+            if len(self.ohlcv) > keep:
+                self.ohlcv = self.ohlcv.iloc[-keep:]
+                self.mp_slice = self.mp_slice[-keep:]
+            print(f'Trimmed datasource as datasource length exceeds {keep}')
+
+
     def calculate_plot_features(self):
 
         self.ohlcv['d'] = [mp.delta_qty for mp in self.mp_slice]
@@ -57,6 +57,9 @@ class OrderflowPlotter:
 
         self.ohlcv['fastk'], self.ohlcv['fastd'] = ta.STOCHRSI(self.ohlcv['c'], timeperiod=self.stoch_rsi[0], fastk_period=self.stoch_rsi[1], fastd_period=self.stoch_rsi[2], fastd_matype=0)
 
+        '''
+        Uncomment this to enable text and heatmap which can be slow
+        '''
         delta_heatmap_rows = [None] * len(self.ohlcv)
         # make heatmap df
         for idx in range(len(self.ohlcv)):
@@ -85,6 +88,7 @@ class OrderflowPlotter:
         self.pot_df['bid_label'] = self.pot_df['pot_bid'].apply(lambda x: self.human_format(x))
 
         self.cvd = np.cumsum(self.ohlcv['d'])
+        fplt.refresh()
 
 
     def orderflow_plot(self):
@@ -111,7 +115,7 @@ class OrderflowPlotter:
             rows=5, # main candlestick = ax / pace of tape = ax5 / MACD = ax3 / CVD = ax2 / StochRSI = ax4
             maximize=False,
             init_zoom_periods=18,
-            row_stretch_factors=[3, 0.3, 1, 1, 1]
+            row_stretch_factors=[3, 0.3, 1, 1, 1],
         )
 
         # placeholder for tick info; updated with fplt.set_time_inspector(func)
@@ -129,7 +133,8 @@ class OrderflowPlotter:
         # candlestick_plot = fplt.candlestick_ochl(datasrc=self.ohlcv[['o', 'c', 'h', 'l']], candle_width=0.7, ax=ax)
 
         # and this is the version with orderflow data; thinner candle and put aside
-        self.plots['candlestick'] = fplt.candlestick_ochl_orderflow(datasrc=self.ohlcv[['o', 'c', 'h', 'l']], candle_width=.075, ax=ax)
+        self.plots['candlestick'] = fplt.candlestick_ochl(datasrc=self.ohlcv[['o', 'c', 'h', 'l']], candle_width=.075, ax=ax)
+        self.plots['candlestick'].x_offset = -0.4 # thin candle to the left
         
         # add volume
         self.plots['volume'] = fplt.volume_ocv(self.ohlcv[['o', 'c', 'v']], candle_width=0.2, ax=ax.overlay(scale=0.18))
@@ -152,6 +157,9 @@ class OrderflowPlotter:
         small_font = pg.Qt.QtGui.QFont()
         small_font.setPixelSize(9)
 
+        '''
+        Uncomment this to enable text and heatmap which can be slow
+        '''
         self.plots['bid_labels'] = fplt.labels(
             self.price_level_texts[['t', 'p', 'b']], ax=ax, anchor=(1, 0.5), color=fplt.foreground, qfont=small_font
         )
@@ -269,7 +277,7 @@ class OrderflowPlotter:
         '''
         def update_legend_text(x, y):
             dt = datetime.fromtimestamp(x // 1000000000)
-            utcdt = dt.astimezone(pytz.utc).replace(tzinfo=None)
+            utcdt = dt.astimezone(pytz.utc).replace(tzinfo=timezone.utc)
             # dt = dt.replace(tzinfo=timezone.utc)
             row = self.ohlcv.loc[utcdt]
             # format html with the candle and set legend
@@ -347,42 +355,3 @@ class OrderflowPlotter:
             num /= 1000.0
         return '{}{}'.format('{:f}'.format(num).rstrip('0').rstrip('.'), ['', 'K', 'M', 'B', 'T'][magnitude])
 
-
-
-if __name__ == '__main__':
-
-    inst = 'btcusdt'
-    token = inst.upper()
-    interval = '1m'
-    increment = 10
-    # input in HKT
-    start = datetime(2022, 4, 18, 23, 0, 0)
-    end = datetime(2022, 4, 19, 6, 0, 0)
-
-    profile = MarketProfileReader()
-    profile.load_data_from_influx(inst=inst, start=start, end=end, env='local')
-    
-    # slice_dt = pytz.timezone('Asia/Hong_Kong').localize(datetime(2022,3,17,17,23,0)) # input in HKT
-    slice_start = pytz.timezone('Asia/Hong_Kong').localize(start) # input in HKT
-    slice_end = pytz.timezone('Asia/Hong_Kong').localize(end) # input in HKT
-    
-    # mp_slice = profile[slice_dt]
-    mp_slice = profile[slice_start:slice_end]
-
-    ohlcv = pd.DataFrame(
-        {
-            'o': [mp.open for mp in mp_slice],
-            'h': [mp.high for mp in mp_slice],
-            'l': [mp.low for mp in mp_slice],
-            'c': [mp.close for mp in mp_slice],
-            'v': [mp.volume_qty for mp in mp_slice],
-            'pot': [mp.pot for mp in mp_slice],
-            'pot_ask': [mp.pot_ask for mp in mp_slice],
-            'pot_bid': [mp.pot_bid for mp in mp_slice],
-        },
-        index=[mp.timepoint for mp in mp_slice]
-    )
-
-    plotter = OrderflowPlotter(token, interval, increment, ohlcv, mp_slice)
-    plotter.orderflow_plot()
-    plotter.show()
