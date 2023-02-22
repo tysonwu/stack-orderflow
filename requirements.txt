@@ -1,0 +1,12 @@
+finplot==1.9.0
+more-itertools==9.0.0
+numpy==1.24.2
+pandas==1.5.3
+PyOpenGL==3.1.6
+PyOpenGL-accelerate==3.1.6
+PyQt6==6.4.2
+pyqtgraph==0.13.1
+pytz==2022.7.1
+TA-Lib==0.4.25
+unicorn-binance-websocket-api==1.41.0
+unicorn-fy==0.12.2
