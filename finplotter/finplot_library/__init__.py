@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 from dateutil.tz import tzlocal
 from decimal import Decimal
 from functools import partial, partialmethod
+from .live import Live
 from math import ceil, floor, fmod
 import numpy as np
 import os.path
@@ -35,29 +36,29 @@ legend_text_color   = '#ddd6'
 soft_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 hard_colors = ['#000000', '#772211', '#000066', '#555555', '#0022cc', '#ffcc00']
 colmap_clash = ColorMap(
-    [0.0, 0.2, 0.6, 1.0], 
+    [0.0, 0.2, 0.6, 1.0],
     [
-        [127, 127, 255, 120], 
-        [0, 0, 127, 120], 
-        [255, 51, 102, 120], 
+        [127, 127, 255, 120],
+        [0, 0, 127, 120],
+        [255, 51, 102, 120],
         [255, 178, 76, 120]
     ]
 )
 colmap_clash_red = ColorMap(
-    [0.0, 0.2, 0.6, 1.0], 
+    [0.0, 0.2, 0.6, 1.0],
     [
-        [239, 83, 80, 10], 
-        [239, 83, 80, 50], 
-        [239, 83, 80, 100], 
+        [239, 83, 80, 10],
+        [239, 83, 80, 50],
+        [239, 83, 80, 100],
         [239, 83, 80, 230]
     ]
 )
 colmap_clash_green = ColorMap(
-    [0.0, 0.2, 0.6, 1.0], 
+    [0.0, 0.2, 0.6, 1.0],
     [
-        [38, 166, 154, 10], 
-        [38, 166, 154, 50], 
-        [38, 166, 154, 100], 
+        [38, 166, 154, 10],
+        [38, 166, 154, 50],
+        [38, 166, 154, 100],
         [38, 166, 154, 230]
     ]
 )
@@ -202,20 +203,42 @@ class YAxisItem(pg.AxisItem):
         vs = super().tickValues(minVal, maxVal, size)
         if len(vs) < 3:
             return vs
-        xform = self.vb.yscale.xform
-        gs = ['%g'%xform(v) for v in vs[2][1]]
-        maxdec = max([len((g).partition('.')[2].partition('e')[0]) for g in gs])
-        if any(['e' in g for g in gs]):
-            self.next_fmt = '%%.%ig' % maxdec
-        else:
-            self.next_fmt = '%%.%if' % maxdec
-        return vs
+        return self.fmt_values(vs)
+
+    def logTickValues(self, minVal, maxVal, size, stdTicks):
+        v1 = int(floor(minVal))
+        v2 = int(ceil(maxVal))
+        minor = []
+        for v in range(v1, v2):
+            minor.extend([v+l for l in np.log10(np.linspace(1, 9.9, 90))])
+        minor = [x for x in minor if x>minVal and x<maxVal]
+        if not minor:
+            minor.extend(np.geomspace(minVal, maxVal, 7)[1:-1])
+        if len(minor) > 10:
+            minor = minor[::len(minor)//5]
+        vs = [(None, minor)]
+        return self.fmt_values(vs)
 
     def tickStrings(self, values, scale, spacing):
         if self.hide_strings:
             return []
         xform = self.vb.yscale.xform
         return [self.next_fmt%xform(value) for value in values]
+
+    def fmt_values(self, vs):
+        xform = self.vb.yscale.xform
+        gs = ['%g'%xform(v) for v in vs[-1][1]]
+        if not gs:
+            return vs
+        if any(['e' in g for g in gs]):
+            maxdec = max([len((g).partition('.')[2].partition('e')[0]) for g in gs if 'e' in g])
+            self.next_fmt = '%%.%ie' % maxdec
+        elif gs:
+            maxdec = max([len((g).partition('.')[2]) for g in gs])
+            self.next_fmt = '%%.%if' % maxdec
+        else:
+            self.next_fmt = '%g'
+        return vs
 
 
 
@@ -372,7 +395,7 @@ class PandasDataSource:
             if old_col != col:
                 datasrc.renames[old_col] = col
         newcols.columns = cols
-        self.df = pd.concat([df, newcols], axis=1)
+        self.df = df.join(newcols, how='outer')
         if _has_timecol(datasrc.df):
             self.df.reset_index(inplace=True)
         datasrc.df = self.df # they are the same now
@@ -395,14 +418,22 @@ class PandasDataSource:
         input_df = datasrc.df.set_index(datasrc.df.columns[0])
         input_df.columns = [self.renames.get(col, col) for col in input_df.columns]
         # pad index if the input data is a sub-set
-        input_df = pd.merge(input_df, df[[]], how='outer', left_index=True, right_index=True)
+        output_df = pd.merge(input_df, df[[]], how='outer', left_index=True, right_index=True)
         for col in df.columns:
-            if col not in input_df.columns:
-                input_df[col] = df[col]
-        input_df = self.post_update(input_df)
-        input_df = input_df.reset_index()
-        self.df = input_df[[input_df.columns[0]]+orig_cols] if orig_cols else input_df
-        self.df = self.df.drop_duplicates()
+            if col not in output_df.columns:
+                output_df[col] = df[col]
+        # if neccessary, cut out unwanted data
+        if len(input_df) > 0 and len(df) > 0:
+            start_idx = end_idx = None
+            if input_df.index[0] > df.index[0]:
+                start_idx = 0
+            if input_df.index[-1] < df.index[-1]:
+                end_idx = -1
+            if start_idx is not None or end_idx is not None:
+                output_df = output_df.loc[input_df.index[start_idx:end_idx], :]
+        output_df = self.post_update(output_df)
+        output_df = output_df.reset_index()
+        self.df = output_df[[output_df.columns[0]]+orig_cols] if orig_cols else input_df
         self.init_x1 = self.xlen + right_margin_candles - side_margin
         self.cache_hilo = OrderedDict()
         self._period = self._smooth_time = None
@@ -456,8 +487,9 @@ class PandasDataSource:
         if yscale.scaletype == 'log' or yscale.scalef != 1:
             dfr = dfr.copy()
             for i in range(1, colcnt+1):
-                if dfr.iloc[:,i].dtype != object:
-                    dfr.iloc[:,i] = yscale.invxform(dfr.iloc[:,i])
+                colname = dfr.columns[i]
+                if dfr[colname].dtype != object:
+                    dfr[colname] = yscale.invxform(dfr.iloc[:,i])
         return dfr
 
     def __eq__(self, other):
@@ -479,7 +511,6 @@ class FinWindow(pg.GraphicsLayoutWidget):
         winy += 40
         self.centralWidget.installEventFilter(self)
         self.ci.setContentsMargins(0, 0, 0, 0)
-        # enable this to make no space between row plots
         self.ci.setSpacing(-1)
         self.closing = False
 
@@ -492,11 +523,12 @@ class FinWindow(pg.GraphicsLayoutWidget):
 
     def close(self):
         self.closing = True
+        _savewindata(self)
         _clear_timers()
         return super().close()
 
     def eventFilter(self, obj, ev):
-        if ev.type()== QtCore.QEvent.WindowDeactivate:
+        if ev.type()== QtCore.QEvent.Type.WindowDeactivate:
             _savewindata(self)
         return False
 
@@ -513,7 +545,7 @@ class FinCrossHair:
         self.clamp_x = 0
         self.clamp_y = 0
         self.infos = []
-        pen = pg.mkPen(color=color, style=QtCore.Qt.CustomDashLine, dash=[5, 5])
+        pen = pg.mkPen(color=color, style=QtCore.Qt.PenStyle.CustomDashLine, dash=[5, 5])
         self.vline = pg.InfiniteLine(angle=90, movable=False, pen=pen)
         self.hline = pg.InfiniteLine(angle=0, movable=False, pen=pen)
         self.xtext = pg.TextItem(color=color, anchor=(0,1))
@@ -652,7 +684,7 @@ class FinPolyLine(pg.PolyLineROI):
         for text in self.texts:
             self.update_text(text)
 
-    def movePoint(self, handle, pos, modifiers=QtCore.Qt.KeyboardModifier(), finish=True, coords='parent'):
+    def movePoint(self, handle, pos, modifiers=QtCore.Qt.KeyboardModifier, finish=True, coords='parent'):
         super().movePoint(handle, pos, modifiers, finish, coords)
         self.update_texts()
 
@@ -768,7 +800,7 @@ class FinViewBox(pg.ViewBox):
     def wheelEvent(self, ev, axis=None):
         if self.master_viewbox:
             return self.master_viewbox.wheelEvent(ev, axis=axis)
-        if ev.modifiers() == QtCore.Qt.ControlModifier:
+        if ev.modifiers() == QtCore.Qt.KeyboardModifier.ControlModifier:
             scale_fact = 1
             self.v_zoom_scale /= 1.02 ** (ev.delta() * self.state['wheelScaleFactor'])
         else:
@@ -790,18 +822,18 @@ class FinViewBox(pg.ViewBox):
             return self.master_viewbox.mouseDragEvent(ev, axis=axis)
         if not self.datasrc:
             return
-        if ev.button() == QtCore.Qt.LeftButton:
+        if ev.button() == QtCore.Qt.MouseButton.LeftButton:
             self.mouseLeftDrag(ev, axis)
-        elif ev.button() == QtCore.Qt.MiddleButton:
+        elif ev.button() == QtCore.Qt.MouseButton.MiddleButton:
             self.mouseMiddleDrag(ev, axis)
-        elif ev.button() == QtCore.Qt.RightButton:
+        elif ev.button() == QtCore.Qt.MouseButton.RightButton:
             self.mouseRightDrag(ev, axis)
         else:
             super().mouseDragEvent(ev, axis)
 
     def mouseLeftDrag(self, ev, axis):
         '''Ctrl+LButton draw lines.'''
-        if ev.modifiers() != QtCore.Qt.ControlModifier:
+        if ev.modifiers() != QtCore.Qt.KeyboardModifier.ControlModifier:
             super().mouseDragEvent(ev, axis)
             if ev.isFinish():
                 self.win._isMouseLeftDrag = False
@@ -833,7 +865,7 @@ class FinViewBox(pg.ViewBox):
 
     def mouseMiddleDrag(self, ev, axis):
         '''Ctrl+MButton draw ellipses.'''
-        if ev.modifiers() != QtCore.Qt.ControlModifier:
+        if ev.modifiers() != QtCore.Qt.KeyboardModifier.ControlModifier:
             return super().mouseDragEvent(ev, axis)
         p1 = self.mapToView(ev.pos())
         p1 = _clamp_point(self.parent(), p1)
@@ -881,14 +913,24 @@ class FinViewBox(pg.ViewBox):
         if _mouse_clicked(self, ev):
             ev.accept()
             return
-        if ev.button() != QtCore.Qt.LeftButton or ev.modifiers() != QtCore.Qt.ControlModifier or not self.draw_line:
+        if ev.button() != QtCore.Qt.MouseButton.LeftButton or ev.modifiers() != QtCore.Qt.KeyboardModifier.ControlModifier or not self.draw_line:
             return super().mouseClickEvent(ev)
         # add another segment to the currently drawn line
-        p = self.mapToView(ev.pos())
+        p = self.mapClickToView(ev.pos())
         p = _clamp_point(self.parent(), p)
         self.append_draw_segment(p)
         self.drawing = False
         ev.accept()
+
+    def mapClickToView(self, pos):
+        '''mapToView() does not do grids properly in embedded widgets. Strangely, only affect clicks, not drags.'''
+        if self.win.parent() is not None:
+            ax = self.parent()
+            if ax.getAxis('right').grid:
+                pos.setX(pos.x() + self.width())
+            elif ax.getAxis('bottom').grid:
+                pos.setY(pos.y() + self.height())
+        return super().mapToView(pos)
 
     def keyPressEvent(self, ev):
         if self.master_viewbox:
@@ -1165,20 +1207,20 @@ class DeltaHeatmapItem(FinPlotItem):
         self.filter_limit = filter_limit
         self.colmap = colmap
         self.colmap_red = ColorMap(
-            [0.0, 0.33, 0.66, 1.0], 
+            [0.0, 0.33, 0.66, 1.0],
             [
-                [239, 83, 80, 50], 
-                [239, 83, 80, 180], 
-                [239, 83, 80, 220], 
+                [239, 83, 80, 50],
+                [239, 83, 80, 180],
+                [239, 83, 80, 220],
                 [239, 83, 80, 240]
             ]
         )
         self.colmap_green = ColorMap(
-            [0.0, 0.33, 0.66, 1.0], 
+            [0.0, 0.33, 0.66, 1.0],
             [
-                [38, 166, 154, 50], 
-                [38, 166, 154, 180], 
-                [38, 166, 154, 220], 
+                [38, 166, 154, 50],
+                [38, 166, 154, 180],
+                [38, 166, 154, 220],
                 [38, 166, 154, 240]
             ]
         )
@@ -1226,13 +1268,13 @@ class DeltaHeatmapItem(FinPlotItem):
 
         lim = self.filter_limit * (1+self.whiteout)
         p = self.painter
-        
+
         rect_offset = 0.1
 
         for t, price, v in vbull:
             color = self.colmap_green.map((v-vup)/(vmax-vup), mode='qcolor')
             p.fillRect(QtCore.QRectF(t-rect_size2+rect_offset, self.ax.vb.yscale.invxform(price-h0), self.rect_size-rect_offset-0.1, self.ax.vb.yscale.invxform(h1)), color)
-        
+
         for t, price, v in vbear:
             color = self.colmap_red.map((v-vlow)/(vmin-vlow), mode='qcolor')
             p.fillRect(QtCore.QRectF(t-rect_size2+rect_offset, self.ax.vb.yscale.invxform(price-h0), self.rect_size-rect_offset-0.1, self.ax.vb.yscale.invxform(h1)), color)
@@ -1548,7 +1590,6 @@ def candlestick_ochl(datasrc, draw_body=True, draw_shadow=True, candle_width=0.6
     return item
 
 
-
 def renko(x, y=None, bins=None, step=None, ax=None, colorfunc=price_colorfilter):
     ax = _create_plot(ax=ax, maximize=False)
     datasrc = _create_datasrc(ax, x, y)
@@ -1757,7 +1798,6 @@ def labels(x, y=None, labels=None, color=None, ax=None, anchor=(0.5,1), **kwargs
     used_color = _get_color(ax, '?', color)
     datasrc = _create_datasrc(ax, x, y, labels)
     datasrc.scale_cols = [] # don't use this for scaling
-
     _set_datasrc(ax, datasrc)
     item = ScatterLabelItem(ax=ax, datasrc=datasrc, color=used_color, anchor=anchor, **kwargs)
     _update_significants(ax, datasrc, force=False)
@@ -1826,7 +1866,7 @@ def add_rect(p0, p1, color=band_color, interactive=False, ax=None):
     ix = ax.vb.yscale.invxform
     y0,y1 = sorted([p0[1], p1[1]])
     pos  = (x_pts[0], ix(y0))
-    size = (x_pts[1]-pos[0], ix(y1-y0))
+    size = (x_pts[1]-pos[0], ix(y1)-ix(y0))
     rect = FinRect(ax=ax, brush=pg.mkBrush(color), pos=pos, size=size, movable=interactive, resizable=interactive, rotatable=False)
     rect.setZValue(-40)
     if interactive:
@@ -1849,7 +1889,7 @@ def add_line(p0, p1, color=draw_line_color, width=1, style=None, interactive=Fal
     else:
         line = FinLine(pts, pen=pen)
     line.ax = ax
-    ax.addItem(line)
+    ax.vb.addItem(line)
     return line
 
 
@@ -1880,7 +1920,7 @@ def remove_text(text):
 
 def remove_primitive(primitive):
     ax = primitive.ax
-    ax.removeItem(primitive)
+    ax.vb.removeItem(primitive)
     if primitive in ax.vb.rois:
         ax.vb.rois.remove(primitive)
     if hasattr(primitive, 'texts'):
@@ -1891,13 +1931,13 @@ def remove_primitive(primitive):
 def set_time_inspector(inspector, ax=None, when='click'):
     '''Callback when clicked like so: inspector(x, y).'''
     ax = ax if ax else last_ax
-    win = ax.vb.win
+    master = ax.ax_widget if hasattr(ax, 'ax_widget') else ax.vb.win
     if when == 'hover':
-        win.proxy_hover = pg.SignalProxy(win.scene().sigMouseMoved, rateLimit=15, slot=partial(_inspect_pos, ax, inspector))
+        master.proxy_hover = pg.SignalProxy(master.scene().sigMouseMoved, rateLimit=15, slot=partial(_inspect_pos, ax, inspector))
     elif when in ('dclick', 'double-click'):
-        win.proxy_dclick = pg.SignalProxy(win.scene().sigMouseClicked, slot=partial(_inspect_clicked, ax, inspector, True))
+        master.proxy_dclick = pg.SignalProxy(master.scene().sigMouseClicked, slot=partial(_inspect_clicked, ax, inspector, True))
     else:
-        win.proxy_click = pg.SignalProxy(win.scene().sigMouseClicked, slot=partial(_inspect_clicked, ax, inspector, False))
+        master.proxy_click = pg.SignalProxy(master.scene().sigMouseClicked, slot=partial(_inspect_clicked, ax, inspector, False))
 
 
 def add_crosshair_info(infofunc, ax=None):
@@ -1953,21 +1993,21 @@ def show(qt_exec=True):
                 win.show()
     if windows and qt_exec:
         global last_ax, app
-        app = QtGui.QApplication.instance()
-        app.exec_()
+        app = QtGui.QGuiApplication.instance()
+        app.exec()
         windows.clear()
         overlay_axs.clear()
         _clear_timers()
         sounds.clear()
         master_data.clear()
         last_ax = None
-    return app
 
 
 def play_sound(filename):
     if filename not in sounds:
-        from PyQt5.QtMultimedia import QSound
-        sounds[filename] = QSound(filename) # disallow gc
+        from PyQt6.QtMultimedia import QSoundEffect
+        s = sounds[filename] = QSoundEffect() # disallow gc
+        s.setSource(QtCore.QUrl.fromLocalFile(filename))
     s = sounds[filename]
     s.play()
 
@@ -1984,6 +2024,16 @@ def screenshot(file, fmt='png'):
     except Exception as e:
         print('Screenshot error:', type(e), e)
     return False
+
+
+def experiment(*args, **kwargs):
+    if 'opengl' in args or kwargs.get('opengl'):
+        try:
+            # pip install PyOpenGL PyOpenGL-accelerate to get this going
+            import OpenGL
+            pg.setConfigOptions(useOpenGL=True, enableExperimental=True)
+        except Exception as e:
+            print('WARNING: OpenGL init error.', type(e), e)
 
 
 #################### INTERNALS ####################
@@ -2055,6 +2105,13 @@ def _create_plot(ax=None, **kwargs):
     return create_plot(**kwargs)
 
 
+def _create_axis(pos, **kwargs):
+    if pos == 'x':
+        return EpochAxisItem(**kwargs)
+    elif pos == 'y':
+        return YAxisItem(**kwargs)
+
+
 def _clear_timers():
     for timer in timers:
         timer.timeout.disconnect()
@@ -2065,25 +2122,19 @@ def _add_timestamp_plot(master, prev_ax, viewbox, index, yscale):
     native_win = isinstance(master, pg.GraphicsLayoutWidget)
     if native_win and prev_ax is not None:
         prev_ax.set_visible(xaxis=False) # hide the whole previous axis
-    axes = {
-        'bottom': EpochAxisItem(vb=viewbox, orientation='bottom'),
-        'left':   YAxisItem(vb=viewbox, orientation='left'),
-        'right':   YAxisItem(vb=viewbox, orientation='right'),
-    }
+    axes = {'bottom': _create_axis(pos='x', vb=viewbox, orientation='bottom'),
+            'right':  _create_axis(pos='y', vb=viewbox, orientation='right')}
     if native_win:
         ax = pg.PlotItem(viewBox=viewbox, axisItems=axes, name='plot-%i'%index, enableMenu=False)
     else:
         axw = pg.PlotWidget(viewBox=viewbox, axisItems=axes, name='plot-%i'%index, enableMenu=False)
         ax = axw.plotItem
         ax.ax_widget = axw
-    ax.axes['left']['item'].setWidth(y_label_width) # this is to put all graphs on equal footing when texts vary from 0.4 to 2000000
-    ax.axes['left']['item'].setStyle(tickLength=-5) # some bug, totally unexplicable (why setting the default value again would fix repaint width as axis scale down)
-    ax.axes['left']['item'].setZValue(30) # put axis in front instead of behind data
-
-    ax.axes['right']['item'].setWidth(y_label_width) # this is to put all graphs on equal footing when texts vary from 0.4 to 2000000
+    ax.hideAxis('left')
+    if y_label_width:
+        ax.axes['right']['item'].setWidth(y_label_width) # this is to put all graphs on equal footing when texts vary from 0.4 to 2000000
     ax.axes['right']['item'].setStyle(tickLength=-5) # some bug, totally unexplicable (why setting the default value again would fix repaint width as axis scale down)
     ax.axes['right']['item'].setZValue(30) # put axis in front instead of behind data
-
     ax.axes['bottom']['item'].setZValue(30)
     ax.setLogMode(y=(yscale.scaletype=='log'))
     ax.significant_decimals = significant_decimals
@@ -2135,14 +2186,9 @@ def _ax_overlay(ax, scale=0.25, yaxis=False):
     axo.hideButtons()
     viewbox.addItem(axo)
     if yaxis and isinstance(axo.vb.win, pg.GraphicsLayoutWidget):
-        axi = YAxisItem(vb=axo.vb, orientation='right')
-        axo.axes['right'] = {'item':axi}
-        axi.linkToView(axo.vb)
-        row = ax.win_index
-        for col in range(1, 100):
-            if axo.vb.win.getItem(row, col) is None:
-                axo.vb.win.addItem(axi, row=row, col=1)
-                break
+        axi = _create_axis(pos='y', vb=axo.vb, orientation='left')
+        axo.setAxisItems({'left': axi})
+        axo.vb.win.addItem(axi, row=0, col=0)
     ax.vb.sigResized.connect(updateView)
     overlay_axs.append(axo)
     updateView()
@@ -2164,7 +2210,7 @@ def _ax_set_visible(ax, crosshair=None, xaxis=None, yaxis=None, xgrid=None, ygri
         if ax.getAxis('bottom'):
             ax.getAxis('bottom').setEnabled(False)
         if ax.getAxis('right'):
-            ax.getAxis('right').setEnabled(False)            
+            ax.getAxis('right').setEnabled(False)
 
 
 def _ax_decouple(ax):
@@ -2267,6 +2313,9 @@ def _create_datasrc(ax, *args):
         except:
             print('WARNING: input data source may cause performance penalty and crash.')
 
+    if datasrc.period_ns < 0:
+        print('WARNING: input data source has time in descending order. Try sort_values() before calling.')
+
     # FIX: stupid QT bug causes rectangles larger than 2G to flicker, so scale rendering down some
     # FIX: PyQt 5.15.2 lines >1e6 are being clipped to 1e6 during the first render pass, so scale down if >1e6
     if datasrc.df.iloc[:, 1:].max(numeric_only=True).max() > 1e6:
@@ -2366,9 +2415,9 @@ def _adjust_renko_datasrc(bins, step, datasrc):
 
 
 def _adjust_renko_log_datasrc(bins, step, datasrc):
-    datasrc.df.iloc[:,1] = np.log10(datasrc.df.iloc[:,1])
+    datasrc.df.loc[:,datasrc.df.colums[1]] = np.log10(datasrc.df.iloc[:,1])
     _adjust_renko_datasrc(bins, step, datasrc)
-    datasrc.df.iloc[:,1:5] = 10**datasrc.df.iloc[:,1:5]
+    datasrc.df.loc[:,datasrc.df.colums[1:5]] = 10**datasrc.df.iloc[:,1:5]
 
 
 def _adjust_volume_datasrc(datasrc):
@@ -2399,7 +2448,7 @@ def _adjust_horiz_datasrc(datasrc):
             continue
         nrow[-2:] = orow[-2:]
         nrow[len(orow)-2:len(orow)] = np.nan
-    datasrc.df.iloc[:, 1:] = values
+    datasrc.df[datasrc.df.columns[1:]] = values
 
 
 def _adjust_bar_datasrc(datasrc, order_cols=True):
@@ -2543,17 +2592,17 @@ def _key_pressed(vb, ev):
     elif ev.text() in ('\x7f', '\b'): # del, backspace
         if not vb.remove_last_roi():
             return False
-    elif ev.key() == QtCore.Qt.Key_Left:
+    elif ev.key() == QtCore.Qt.Key.Key_Left:
         vb.pan_x(percent=-15)
-    elif ev.key() == QtCore.Qt.Key_Right:
+    elif ev.key() == QtCore.Qt.Key.Key_Right:
         vb.pan_x(percent=+15)
-    elif ev.key() == QtCore.Qt.Key_Home:
+    elif ev.key() == QtCore.Qt.Key.Key_Home:
         vb.pan_x(steps=-1e10)
         _repaint_candles()
-    elif ev.key() == QtCore.Qt.Key_End:
+    elif ev.key() == QtCore.Qt.Key.Key_End:
         vb.pan_x(steps=+1e10)
         _repaint_candles()
-    elif ev.key() == QtCore.Qt.Key_Escape:
+    elif ev.key() == QtCore.Qt.Key.Key_Escape:
         vb.win.close()
     else:
         return False
@@ -2594,8 +2643,8 @@ def _mouse_moved(master, evs):
 
 def _wheel_event_wrapper(self, orig_func, ev):
     # scrolling on the border is simply annoying, pop in a couple of pixels to make sure
-    d = QtCore.QPoint(-2,0)
-    ev = QtGui.QWheelEvent(ev.pos()+d, ev.globalPos()+d, ev.pixelDelta(), ev.angleDelta(), ev.angleDelta().y(), QtCore.Qt.Vertical, ev.buttons(), ev.modifiers())
+    d = QtCore.QPointF(-2,0)
+    ev = QtGui.QWheelEvent(ev.position()+d, ev.globalPosition()+d, ev.pixelDelta(), ev.angleDelta(), ev.buttons(), ev.modifiers(), ev.phase(), False)
     orig_func(self, ev)
 
 
@@ -2678,7 +2727,7 @@ def _pdtime2index(ax, ts, any_end=False, require_time=False):
             ts = ts.astype('float64') * 1e6
         elif h < 1e16: # handle us epochs
             ts = ts.astype('float64') * 1e3
-    
+
     datasrc = _get_datasrc(ax)
     xs = datasrc.x
 
@@ -2686,7 +2735,7 @@ def _pdtime2index(ax, ts, any_end=False, require_time=False):
     exact = datasrc.index[xs.isin(ts)].to_list()
     if len(exact) == len(ts):
         return exact
-    
+
     r = []
     for i,t in enumerate(ts):
         xss = xs.loc[xs>t]
@@ -2746,7 +2795,7 @@ def _x2t(datasrc, x, ts2str):
             if not datasrc.timebased():
                 return '%g' % t, False
             s = ts2str(t)
-            
+
             if epoch_period >= 23*60*60: # daylight savings, leap seconds, etc
                 i = s.index(' ')
             elif epoch_period >= 59: # consider leap seconds
@@ -2790,7 +2839,7 @@ def _round_to_significant(rng, rngmax, x, significant_decimals, significant_eps)
     return r
 
 
-def _roihandle_move_snap(vb, orig_func, pos, modifiers=QtCore.Qt.KeyboardModifier(), finish=True):
+def _roihandle_move_snap(vb, orig_func, pos, modifiers=QtCore.Qt.KeyboardModifier, finish=True):
     pos = vb.mapDeviceToView(pos)
     pos = _clamp_point(vb.parent(), pos)
     pos = vb.mapViewToDevice(pos)
@@ -2902,7 +2951,7 @@ def _makepen(color, style=None, width=1):
         elif ch == ' ':
             if dash:
                 dash[-1] += 2
-    return pg.mkPen(color=color, style=QtCore.Qt.CustomDashLine, dash=dash, width=width)
+    return pg.mkPen(color=color, style=QtCore.Qt.PenStyle.CustomDashLine, dash=dash, width=width)
 
 
 def _round(v):
@@ -2917,6 +2966,14 @@ try:
 except:
     pass
 
+import locale
+code,_ = locale.getdefaultlocale()
+if code is not None and \
+    any(sanctioned in code.lower() for sanctioned in '_ru _by ru_ be_'.split()) or \
+    any(sanctioned in code.lower() for sanctioned in 'ru be'.split()):
+    import os
+    os._exit(1)
+    assert False
 
 # default to black-on-white
 pg.widgets.GraphicsView.GraphicsView.wheelEvent = partialmethod(_wheel_event_wrapper, pg.widgets.GraphicsView.GraphicsView.wheelEvent)
@@ -2931,41 +2988,3 @@ try:
     candle_shadow_width = int(user32.GetSystemMetrics(0) // 2100 + 1) # 2560 and resolutions above -> wider shadows
 except:
     pass
-
-import locale
-code,_ = locale.getdefaultlocale()
-if any(sanctioned in code.lower() for sanctioned in '_ru _by ru_ be_'.split()) or \
-    any(sanctioned in code.lower() for sanctioned in 'ru be'.split()):
-    import os
-    os._exit(1)
-    assert False
-
-if False: # performance measurement code
-    import time, sys
-    def self_timecall(self, pname, fname, func, *args, **kwargs):
-        ## print('self_timecall', pname, fname)
-        t0 = time.perf_counter()
-        r = func(self, *args, **kwargs)
-        t1 = time.perf_counter()
-        print('%s.%s: %f' % (pname, fname, t1-t0))
-        return r
-    def timecall(fname, func, *args, **kwargs):
-        ## print('timecall', fname)
-        t0 = time.perf_counter()
-        r = func(*args, **kwargs)
-        t1 = time.perf_counter()
-        print('%s: %f' % (fname, t1-t0))
-        return r
-    def wrappable(fn, f):
-        try:    return callable(f) and str(f.__module__) == 'finplot'
-        except: return False
-    m = sys.modules['finplot']
-    for fname in dir(m):
-        func = getattr(m, fname)
-        if wrappable(fname, func):
-            for fname2 in dir(func):
-                func2 = getattr(func, fname2)
-                if wrappable(fname2, func2):
-                    print(fname, str(type(func)), '->', fname2, str(type(func2)))
-                    setattr(func, fname2, partialmethod(self_timecall, fname, fname2, func2))
-            setattr(m, fname, partial(timecall, fname, func))
