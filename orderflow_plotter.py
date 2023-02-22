@@ -4,7 +4,6 @@ import os
 
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import pyqtgraph as pg
 import talib as ta
 
@@ -16,7 +15,7 @@ Known issue: drawing heatmap for orderflow slot hightlights and bid-ask volume l
 '''
 
 class OrderflowPlotter:
- 
+
     ema_n = [20, 50, 200]
     macd = [12, 26, 9]
     stoch_rsi = [14, 3, 3]
@@ -68,7 +67,7 @@ class OrderflowPlotter:
         self.delta_heatmap = pd.concat(delta_heatmap_rows, axis=0, sort=True)
 
         price_levels_text_rows = [None] * len(self.ohlcv)
-        
+
         for idx, mp in enumerate(self.mp_slice):
             bidask_profile = mp.bidask_profile.reset_index().rename(columns={'index': 'p'})
             bidask_profile['t'] = int(mp.timepoint.timestamp())
@@ -135,7 +134,7 @@ class OrderflowPlotter:
         # and this is the version with orderflow data; thinner candle and put aside
         self.plots['candlestick'] = fplt.candlestick_ochl(datasrc=self.ohlcv[['o', 'c', 'h', 'l']], candle_width=.075, ax=ax)
         self.plots['candlestick'].x_offset = -0.4 # thin candle to the left
-        
+
         # add volume
         self.plots['volume'] = fplt.volume_ocv(self.ohlcv[['o', 'c', 'v']], candle_width=0.2, ax=ax.overlay(scale=0.18))
 
@@ -178,7 +177,7 @@ class OrderflowPlotter:
         ax5.set_visible(yaxis=False)
         fplt.add_crosshair_info(skip_y_crosshair_info, ax=ax5)
         fplt.set_y_range(0, 2, ax5)
-        
+
         pot_colmap = fplt.ColorMap([0.0, 0.3, 1.0], [[255, 255, 255, 10], [255, 155, 0, 200], [210, 48, 9, 230]]) # traffic light colors
 
         # background color
@@ -189,7 +188,7 @@ class OrderflowPlotter:
 
         self.plots['pot_ask'] = fplt.labels(self.pot_df[['ts', 'ask_label_height', 'ask_label']], ax=ax5, anchor=(0.5, 0.5), color=fplt.foreground, qfont=medium_font)
         self.plots['pot_bid'] = fplt.labels(self.pot_df[['ts', 'bid_label_height', 'bid_label']], ax=ax5, anchor=(0.5, 0.5), color=fplt.foreground, qfont=medium_font)
-        
+
         # maybe find a better way to deal with this
         fplt.legend_border_color = '#151E26'
         fplt.legend_fill_color = '#ffffff80'
@@ -198,7 +197,7 @@ class OrderflowPlotter:
         # revert back after adding this legend
         fplt.legend_border_color = '#ffffff30'
         fplt.legend_fill_color = '#ffffff10'
-        fplt.legend_text_color = fplt.foreground    
+        fplt.legend_text_color = fplt.foreground
 
         # and set background
         vb = self.plots['pot_heatmap'].getViewBox()
@@ -254,19 +253,19 @@ class OrderflowPlotter:
 
         transparency = '45'
         self.plots['volume'].colors.update({
-            'bull_frame': fplt.candle_bull_color + transparency, 
+            'bull_frame': fplt.candle_bull_color + transparency,
             'bull_body': fplt.candle_bull_body_color + transparency,
-            'bear_frame': fplt.candle_bear_color + transparency, 
+            'bear_frame': fplt.candle_bear_color + transparency,
             'bear_body': fplt.candle_bear_color + transparency,
         })
-        
+
         # set gridlines
         ax.showGrid(x=True, y=True, alpha=0.2)
         ax2.showGrid(x=True, y=True, alpha=0.1)
         ax3.showGrid(x=True, y=True, alpha=0.1)
         ax4.showGrid(x=True, y=True, alpha=0.1)
         ax5.showGrid(x=True, y=False, alpha=0.1)
-        
+
         # add YAxis item at the right
         # ax.axes['right'] = {'item': fplt.YAxisItem(vb=ax.vb, orientation='right')}
         # ax2.axes['right'] = {'item': fplt.YAxisItem(vb=ax2.vb, orientation='right')}
@@ -285,7 +284,7 @@ class OrderflowPlotter:
             rawtxt = '<span style="font-size:14px">%%s %%s</span> &nbsp; O: %s H: %s L: %s C: %s Delta: %s' % (fmt, fmt, fmt, fmt, fmt)
             hover_label.setText(rawtxt % (self.token, self.interval, row['o'], row['h'], row['l'], row['c'], row['d']))
         fplt.set_time_inspector(update_legend_text, ax=ax, when='hover')
-        
+
         # additional crosshair info
         def enrich_info(x, y, xtext, ytext):
             # o = self.ohlcv.iloc[x]['o']
@@ -298,7 +297,7 @@ class OrderflowPlotter:
             if y > mp.price_levels_range[0] + y_increment  or y < mp.price_levels_range[1] - y_increment:
                 add_yt = f'\tLevel: {ytext}' # not showing orderflow info if cursor is outside range
             else:
-                bapr.index = bapr.index - y_increment # 
+                bapr.index = bapr.index - y_increment #
                 plr = bapr[bapr.index <= y].iloc[-1] # the price level row
                 pl = round(plr.name + y_increment, 8) # the original price level
                 dpr = mp.delta_profile
@@ -306,7 +305,7 @@ class OrderflowPlotter:
                 add_yt = f'\tLevel: {ytext}\n\n\tAsk: {a}\n\tBid: {b}\n\tDelta: {d}' # not showing ask and bid value if cursor is outside range
             add_xt = f'\t{xtext}'
             return add_xt, add_yt
-        
+
         fplt.add_crosshair_info(enrich_info, ax=ax)
 
         '''
