@@ -2,7 +2,7 @@
 
 > **Some words:**
 > This repo started off as a project for my own needs - there were little to no open source tools about orderflow charting and visualization given how specific it is.
-> I am losing motivation on expanding/optimizing this project because coding up desktop GUI using PyQt-related tools feels crazy, especially when comopared to the development experience in JS-ecosystem - I don't really love JavaScript but given how available the community is, it is a lot easier to code up things there. Plus, desktop GUIs feel really old. At the time of writing, I feel more excited to code up webapps/desktop apps with something else. Just not graphic dev with Python.
+> I am losing motivation on expanding/optimizing this project because coding up desktop GUI using PyQt-related tools feels crazy, especially when comopared to the development experience in JS-ecosystem - I don't really love JavaScript but given how available the community is, it is a lot easier to code up things there. Plus, desktop GUIs feel really old. At the time of writing, I feel more excited to code up webapps/desktop apps with something else. Just not graphic dev with Python. Nevertheless, I will try to keep developing on this project from time to time 😗.
 
 Orderflow chart desktop GUI using [Finplot](https://github.com/highfestiva/finplot) and [PyQtGraph](https://github.com/pyqtgraph/pyqtgraph).
 
